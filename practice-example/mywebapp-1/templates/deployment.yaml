@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mydeployment
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "appname.labels" . | indent 4 }}
+spec:
+{{- if .Values.autoScaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+{{- else if not .Values.autoScaling.enabled }}
+  replicas: 2
+{{- else }}
+  replicas: 1
+{{- end }}
+  selector:
+    matchLabels:
+    {{- include "frontend.labels" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+      {{- include "frontend.labels" . | indent 8 }}
+    spec: # Pod spec
+      containers:
+      - name: mycontainer
+        image: {{ default "nginx:1.25.4" .Values.image.repository }}:{{ .Values.image.tag }}
+        ports:
+        - containerPort: 80
+        envFrom:
+        - configMapRef:
+            name: {{ .Values.configMapName }}
+        resources:
+          requests:
+            memory: "16Mi" 
+            cpu: "50m"    # 500milliCPUs (1/2 CPU)
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

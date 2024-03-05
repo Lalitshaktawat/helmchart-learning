@@ -1,0 +1,15 @@
+kind: ConfigMap 
+apiVersion: v1 
+metadata:
+  name: {{ quote .Values.configMapName }}
+  namespace: {{ .Release.Namespace }}
+data:
+  {{- with .Values.data }}
+  BG_COLOR: {{ .bgColor | quote }}
+  FONT_COLOR: {{ .frColor | quote }}
+  CUSTOM_HEADER: {{ .customHeader | quote }}
+  regions: |
+    {{- range .regions }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- end }}

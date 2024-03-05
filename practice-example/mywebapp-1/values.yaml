@@ -1,0 +1,47 @@
+# Default values for mywebapp-1.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Number of replica, we would like to run.
+replicaCount: 3
+
+# Service port number that we would like to expose.
+service:
+  port: 80
+
+# Ingress creation
+ingress:
+  enabled: true
+
+# ConfigMap name 
+configMapName: configmapv
+
+data:
+  bgColor: 12181b
+  frColor: FFFFFF
+  customHeader: Customized with a configmap!
+
+regions: 
+  - Ohio
+  - Virginia
+  - California
+  - Oregon
+  - Cape
+  - Hong
+  - Hyderabad
+
+# Image repository and tag details.
+image:
+  repository: nginx
+  tag: 1.25.4
+
+# Autoscaling that we are using with deployment to create replicas.
+autoScaling:
+  enabled: false
+
+# App name
+
+app: 
+  name: mywebapp
+  tier: frontend
+

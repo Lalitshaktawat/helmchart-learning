@@ -1,4 +1,4 @@
-# Helm Char learning path
+# Helm Chart learning path
 
 :link: [Documents](https://helm.sh/docs/)
 
@@ -452,6 +452,11 @@ dependencies:
 
 If the dependency chart is retrieved locally, it is not required to have the repository added to helm by "helm add repo". Version matching is also supported for this case.
 
+```R
+helm dependency build .\<Helm Chart name>\
+helm dependency build .\mywebapp-1\
+```
+
 Helm chart structure.
 
 ![helm](/helm-pic/Screenshot-00002.png)
@@ -472,7 +477,7 @@ You can use --set parameter that replace the original value on values.yaml file.
 
 ![helm](/helm-pic/customize-chart1.png)
 
-You can create **custom-values** file and pass with **-values** parameter.
+You can create **custom-values** file and pass with **--values** parameter.
 
 ![helm](/helm-pic/customize-chart2.png)
 
@@ -630,35 +635,47 @@ Helm allows you to use functions within your Helm charts to perform various oper
 
 1] Template Functions:
 
+```R
 {{ .Release.Name }}: Returns the name of the release.
 {{ .Release.Namespace }}: Returns the namespace of the release.
 {{ .Chart.Name }}: Returns the name of the chart.
 {{ .Chart.Version }}: Returns the version of the chart.
 {{ .Values.someKey }}: Accesses values from the values.yaml file or custom values.
+```
 
 2] Control Flow Functions:
 
+```R
 {{ if .Values.enableFeature }} ... {{ else }} ... {{ end }}: Conditional statements.
 {{ range .Values.items }} ... {{ end }}: Iterates over a list.
+```
 
 3] String Functions:
 
+```R
 {{ printf "Hello, %s!" .Values.name }}: Formats a string.
 {{ toYaml .Values.someMap }}: Converts a map to YAML format.
+```
 
 4] Math Functions:
 
+```R
 {{ add .Values.number1 .Values.number2 }}: Adds two numbers.
 {{ sub .Values.number1 .Values.number2 }}: Subtracts two numbers.
+```
 
 5] Include Function:
 
+```R
 {{ include "mychart.mytemplate" . }}: Includes another template file in the chart.
+```
 
 6] Built-in Functions:
 
+```R
 env: Reads an environment variable.
 tpl: Renders a template string.
+```
 
 Example of using a function in a Helm chart template:
 
@@ -745,9 +762,161 @@ In Helm charts, the with block is used to set a local scope for a particular var
 ![helm](/helm-pic/Screenshot-00076.png)
 ![helm](/helm-pic/Screenshot-00077.png)
 ![helm](/helm-pic/Screenshot-00078.png)
+
+
 ![helm](/helm-pic/Screenshot-00079.png)
 ![helm](/helm-pic/Screenshot-00080.png)
+
+**Named templates**:
+
+- Let's look at the deployment file. Here we have bunch of labels defined, and they are all the same lines, that are repeated multiple times throughout this file.
+- How can we be consistent and reuse code and remove duplication? Now, we can remove the repeating lines to what is called a partial or names template.
+- We can move those repeated line to _helpers.tpl.
+- Now the underscore in the file name tells helm not to consider this file as a usual template file. Because when we run the helm create command, helm reads all the file sin the template directory and convert them to Kubernetes manifests. 
+
+**What are Helper Files?**
+Helper files are files that contain reusable code and are especially useful for defining complex Kubernetes objects that are used repeatedly in a chart. By defining these objects in a helper file, developers can avoid code repetition, and create templates that are more concise, readable, and easier to maintain.
+
+**What are Named Templates?**
+Named templates, on the other hand, enable developers to define a template once and reuse it throughout the chart with a simple reference. This is particularly helpful in defining common Kubernetes objects, such as ConfigMaps or Secrets, which are utilized by multiple resources in the chart. By defining them once, developers can maintain consistency throughout the chart and minimize the risk of errors.
+
+```R
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: RELEASE-NAME-nginx
+  labels:    
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/instance: RELEASE-NAME
+spec:
+  selector:
+    matchLabels:      
+      app.kubernetes.io/name: nginx
+      app.kubernetes.io/instance: RELEASE-NAME
+  template:
+    metadata:
+      labels:        
+        app.kubernetes.io/name: nginx
+        app.kubernetes.io/instance: RELEASE-NAME
+    spec:
+      containers:
+        - name: nginx
+          image: "nginx:1.16.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+
+```
+
+We mentioned how we have those labels that keep repeating themselves in various spots. So let’s define those two lines in such a helper file. We’ll name this file _helpers.tpl, as this is common practice.
+
+```R
+{{/*
+Here, we generate selector labels. It's highly recommended that you include comments here, so that other people know what this section does, but it's not mandatory.
+*/}}
+{{- define "nginx.labels" }}
+app.kubernetes.io/name: {{ .Chart.Name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+```
+
+We basically defined a sort of **function** and we decided to call it `nginx.labels.` Of course, we say function here just to give an idea to programmers that these are similar to functions in regular coding practice. But these are technically called **named templates** in Helm’s world.
+
+We could have named our template any way we wanted, but this convention of prefixing the name with the current chart’s name makes it easy to avoid some errors. For example, say we simply named it labels. We might have some complex charts that depend on subcharts. If those subcharts also have a helper file that contains a label named template, it could override what we defined here, generating entirely different kinds of content, creating confusion for us, and leading to long debugging sessions to trace what went wrong.
+
+If you stick to the **name_of_chart.name_of_template** format for all your named templates, you should easily avoid such issues, as each named template in every chart and subchart should now have a unique name.
+
+So now that we defined this repetitive stuff that we need to use in three different spots in our deployment.yaml template, let’s see how we actually do that (equivalent to calling a function in the main program).
+
+Under the two labels: sections and the matchLabels: section, we delete everything and replace it with our named template defined in our helper file. The final result will look like this:
+
+```R
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-nginx
+  labels:
+    {{- include "nginx.labels" . | indent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "nginx.labels" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nginx.labels" . | indent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository | default "nginx" }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+```
+
+So, with a simple include keyword we can just call on our named template, defined in our **_helpers.tpl** file, to fill in the stuff we need to add here, namely our two templatized labels. Pretty easy. But it’s worth noting the additional stuff we did. We used the - sign to remove the unnecessary empty extra lines that these include lines would add to the generated manifest.
+
+Also, we used the indent function to insert the necessary number of spaces in front of each of our labels.
+
+But most importantly, we see a dot . after include and the name of the template to include. The dot is a way to pass the **so-called top-level**** scope to this named template. Remember, our named template looks like this
+
+```R
+{{- define "nginx.labels" }}
+app.kubernetes.io/name: {{ .Chart.Name }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+```
+
+**{{ .Chart.Name }}** and **{{ .Release.Name }}** need to fetch the chart name and release the name from somewhere. If you’re a developer, you probably already understand the need for scopes here and what actually happens. If you’re not, you can think of it this way.
+
+By using . to pass the top-level scope here, when Helm enters the named template and begins to process that, when it finally needs to fetch the .Chart.Name it knows it should pull this from the name of the current chart it’s in (the main chart, the top level chart) because it has been instructed to look in the current top-level scope. Without a scope, it would not know from what context or what environment to extract those values from.
+
+For example, imagine a named template is called from a dependency (child chart of the main chart). Does this named template pull the chart name of the parent chart? Or does it pull the chart name of the child chart? Without adding scope, it does not know from where to get this data.
+
+Now let’s explore the manifest that our newly rewritten chart generates.
+
+```R
+user@debian:~$ helm template ./nginx
+---
+# Source: nginx/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: RELEASE-NAME-nginx
+  labels:    
+    app.kubernetes.io/name: nginx
+    app.kubernetes.io/instance: RELEASE-NAME
+spec:
+  selector:
+    matchLabels:      
+      app.kubernetes.io/name: nginx
+      app.kubernetes.io/instance: RELEASE-NAME
+  template:
+    metadata:
+      labels:        
+        app.kubernetes.io/name: nginx
+        app.kubernetes.io/instance: RELEASE-NAME
+    spec:
+      containers:
+        - name: nginx
+          image: "nginx:1.16.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+```
+
 ![helm](/helm-pic/Screenshot-00081.png)
+
+
 ![helm](/helm-pic/Screenshot-00082.png)
 ![helm](/helm-pic/Screenshot-00083.png)
 ![helm](/helm-pic/Screenshot-00084.png)
